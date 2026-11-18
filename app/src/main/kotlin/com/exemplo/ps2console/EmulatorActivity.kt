@@ -32,11 +32,12 @@ class EmulatorActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
             val lp = FrameLayout.LayoutParams(160, 160)
             val left = id < 4
+            // (distância horizontal, distância de baixo) dentro do grupo
+            val pos = mapOf(0 to (160 to 320), 1 to (160 to 0), 2 to (0 to 160), 3 to (320 to 160),
+                7 to (160 to 320), 4 to (160 to 0), 6 to (320 to 160), 5 to (0 to 160))[id]!!
             lp.gravity = android.view.Gravity.BOTTOM or if (left) android.view.Gravity.START else android.view.Gravity.END
-            val k = id % 4
-            lp.leftMargin = 24 + (if (left) (if (k == 2) 0 else if (k == 3) 320 else 160) else 0)
-            lp.rightMargin = 24 + (if (!left) (if (k == 2) 0 else if (k == 3) 320 else 160) else 0)
-            lp.bottomMargin = 24 + (if (k == 0) 320 else if (k == 1) 0 else 160)
+            if (left) lp.leftMargin = 24 + pos.first else lp.rightMargin = 24 + pos.first
+            lp.bottomMargin = 24 + pos.second
             root.addView(b, lp)
         }
         listOf(8 to "START", 9 to "SELECT").forEachIndexed { i, (id, t) ->
