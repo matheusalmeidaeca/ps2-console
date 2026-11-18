@@ -39,13 +39,33 @@ class EmulatorActivity : AppCompatActivity(), SurfaceHolder.Callback {
             lp.bottomMargin = 24 + (if (k == 0) 320 else if (k == 1) 0 else 160)
             root.addView(b, lp)
         }
+        listOf(8 to "START", 9 to "SELECT").forEachIndexed { i, (id, t) ->
+            val b = Button(this).apply {
+                text = t; alpha = 0.5f
+                setOnTouchListener { _, ev ->
+                    when (ev.action) {
+                        MotionEvent.ACTION_DOWN -> NativeBridge.setButton(id, true)
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> NativeBridge.setButton(id, false)
+                    }
+                    true
+                }
+            }
+            val lp = FrameLayout.LayoutParams(300, 120)
+            lp.gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
+            lp.topMargin = 24 + i * 140
+            root.addView(b, lp)
+        }
         setContentView(root)
     }
 
     override fun surfaceCreated(h: SurfaceHolder) {
         val iso = contentResolver.openFileDescriptor(intent.data!!, "r")!!.detachFd()
-        val msg = NativeBridge.start(File(filesDir, "bios.bin").path, iso, h.surface)
-        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+        val sys = File(filesDir, "system").path
+        // carregar o jogo pode demorar: fora da thread principal
+        Thread {
+            val msg = NativeBridge.start(sys, iso, h.surface)
+            runOnUiThread { Toast.makeText(this, "$msg (log: botão Ver log)", Toast.LENGTH_LONG).show() }
+        }.start()
     }
     override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
     override fun surfaceDestroyed(h: SurfaceHolder) { NativeBridge.stop() }

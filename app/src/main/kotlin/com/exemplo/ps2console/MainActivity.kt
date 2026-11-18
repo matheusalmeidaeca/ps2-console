@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -16,7 +17,7 @@ class MainActivity : AppCompatActivity() {
 
     private val pickBios = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@registerForActivityResult
-        val dest = File(filesDir, "bios.bin")
+        val dest = File(filesDir, "system/pcsx2/bios").apply { mkdirs() }.let { File(it, "bios.bin") }
         contentResolver.openInputStream(uri)?.use { i -> dest.outputStream().use { o -> i.copyTo(o) } }
         status.text = if (NativeBridge.validateBios(dest.path)) "BIOS ok." else "Arquivo não parece uma BIOS de PS2."
     }
@@ -37,11 +38,15 @@ class MainActivity : AppCompatActivity() {
         root.addView(status)
         root.addView(btn("Escolher BIOS") { pickBios.launch(arrayOf("*/*")) })
         root.addView(btn("Escolher jogo (ISO)") { pickIso.launch(arrayOf("*/*")) })
+        root.addView(btn("Ver log") {
+            val f = File(filesDir, "system.log")
+            status.text = if (f.exists()) f.readText().takeLast(3000).ifBlank { "Log vazio." } else "Ainda sem log."
+        })
         root.addView(btn("Iniciar") {
             val uri = isoUri
-            if (uri == null || !File(filesDir, "bios.bin").exists()) status.text = "Escolha BIOS e ISO primeiro."
+            if (uri == null || !File(filesDir, "system/pcsx2/bios/bios.bin").exists()) status.text = "Escolha BIOS e ISO primeiro."
             else startActivity(Intent(this, EmulatorActivity::class.java).setData(uri))
         })
-        setContentView(root)
+        setContentView(ScrollView(this).apply { addView(root) })
     }
 }
