@@ -69,9 +69,14 @@ jobs:
           cp -r core/bin/resources pkg/app/src/main/assets/resources
           (cd pkg && zip -qr ../core-android-arm64.zip app)
           ls -la core-android-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nucleo-ps2-arm64
+          path: core-android-arm64.zip
       - name: Publicar na release "core"
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release view core >/dev/null 2>&1 || gh release create core --title "Núcleo PS2" --notes "Núcleo ARMSX2 libretro (arm64)"
           gh release upload core core-android-arm64.zip --clobber
