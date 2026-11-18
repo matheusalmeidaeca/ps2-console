@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.18)
+project(ps2bridge CXX)
+set(CMAKE_CXX_STANDARD 17)
+add_library(ps2bridge SHARED native_bridge.cpp)
+find_library(log-lib log)
+find_library(android-lib android)
+target_link_libraries(ps2bridge ${log-lib} ${android-lib} dl)
