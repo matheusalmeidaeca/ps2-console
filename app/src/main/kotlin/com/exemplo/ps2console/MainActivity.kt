@@ -48,5 +48,29 @@ class MainActivity : AppCompatActivity() {
             else startActivity(Intent(this, EmulatorActivity::class.java).setData(uri))
         })
         setContentView(ScrollView(this).apply { addView(root) })
+        copyResources()
+    }
+
+    // copia assets/resources (shaders, GameIndex...) para system/pcsx2/resources na 1ª execução
+    private fun copyResources() {
+        val dest = File(filesDir, "system/pcsx2/resources")
+        if (File(dest, "GameIndex.yaml").exists()) return
+        if (assets.list("resources").isNullOrEmpty()) return
+        status.text = status.text.toString() + "\nCopiando recursos do núcleo..."
+        Thread {
+            copyAssetDir("resources", dest)
+            runOnUiThread { status.text = status.text.toString().replace("\nCopiando recursos do núcleo...", "\nRecursos prontos.") }
+        }.start()
+    }
+
+    private fun copyAssetDir(path: String, dest: File) {
+        val list = assets.list(path) ?: return
+        if (list.isEmpty()) {
+            dest.parentFile?.mkdirs()
+            assets.open(path).use { i -> dest.outputStream().use { o -> i.copyTo(o) } }
+        } else {
+            dest.mkdirs()
+            list.forEach { copyAssetDir("$path/$it", File(dest, it)) }
+        }
     }
 }

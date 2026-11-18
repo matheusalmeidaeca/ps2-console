@@ -270,10 +270,11 @@ extern "C" {
 JNIEXPORT jstring JNICALL
 Java_com_exemplo_ps2console_NativeBridge_nativeInit(JNIEnv* env, jobject, jstring libDir) {
     const char* dir = env->GetStringUTFChars(libDir, nullptr);
-    std::string path = std::string(dir) + "/libpcsx2_libretro.so";
+    std::string base = dir;
     env->ReleaseStringUTFChars(libDir, dir);
-    g_core = dlopen(path.c_str(), RTLD_NOW);
-    if (!g_core) return env->NewStringUTF("Núcleo PS2 não instalado (libpcsx2_libretro.so ausente).");
+    g_core = dlopen((base + "/libarmsx2_libretro.so").c_str(), RTLD_NOW);
+    if (!g_core) g_core = dlopen((base + "/libpcsx2_libretro.so").c_str(), RTLD_NOW);
+    if (!g_core) return env->NewStringUTF("Núcleo PS2 não instalado (libarmsx2_libretro.so ausente).");
     if (!loadSyms()) return env->NewStringUTF("Núcleo carregado, mas não é um núcleo libretro válido.");
     return env->NewStringUTF("Núcleo PS2 carregado.");
 }

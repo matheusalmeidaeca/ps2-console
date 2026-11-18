@@ -1,63 +1,77 @@
-name: Build núcleo PS2 (libretro, arm64)
-# Compila um núcleo libretro de PS2 para Android arm64 e publica o .so como artifact.
-# Sem receita oficial verificada: se falhar, leia o log do passo "Descobrir" e ajuste os inputs.
+name: Build núcleo PS2 (ARMSX2 libretro, Android arm64)
+# Receita baseada no .gitlab-ci.yml do próprio ARMSX2 (job android arm64-v8a).
+# Publica o resultado na release "core"; o workflow "Build APK" baixa de lá.
 on:
   workflow_dispatch:
     inputs:
-      repo:
-        description: "Repositório do núcleo (GPL)"
-        default: "ARMSX2/ARMSX2"
       ref:
-        description: "Branch/tag (vazio = padrão)"
+        description: "Branch/tag do ARMSX2 (vazio = padrão)"
         default: ""
-      cmake_flags:
-        description: "Flags extras do CMake para ativar o núcleo libretro"
-        default: "-DBUILD_LIBRETRO_CORE=ON"
+permissions:
+  contents: write
 jobs:
   core:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    env:
+      NDK_VERSION: "29.0.14206865"
+      API_LEVEL: "28"
     steps:
-      - name: Clonar núcleo
+      - name: Espaço em disco
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          df -h /
+      - name: Clonar ARMSX2
         run: |
           git clone --recursive ${{ github.event.inputs.ref && format('--branch {0}', github.event.inputs.ref) || '' }} \
-            https://github.com/${{ github.event.inputs.repo }} core
-      - name: Descobrir como compilar o libretro
-        working-directory: core
-        run: |
-          echo "== menções a libretro nos CMakeLists =="
-          grep -rIn -i "libretro" --include=CMakeLists.txt --include=*.cmake . | head -40 || true
-          echo "== workflows do próprio repo =="
-          ls .github/workflows 2>/dev/null || true
-          grep -rIn -i "libretro" .github 2>/dev/null | head -40 || true
-      - name: Dependências
+            https://github.com/ARMSX2/ARMSX2 core
+      - name: Instalar NDK e ferramentas
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ccache cmake git pkg-config
+          sudo apt-get install -y ninja-build cmake python3 git ca-certificates ccache
+          yes | sdkmanager "ndk;${NDK_VERSION}" >/dev/null || true
+          echo "NDK=$ANDROID_HOME/ndk/${NDK_VERSION}" >> $GITHUB_ENV
       - uses: actions/cache@v4
+        id: deps
         with:
-          path: ~/.ccache
-          key: core-ccache-${{ github.run_id }}
-          restore-keys: core-ccache-
-      - name: Configurar (NDK arm64)
+          path: ~/deps
+          key: android-deps-arm64-${{ hashFiles('core/.github/workflows/scripts/android/build-dependencies.sh') }}
+      - name: Compilar dependências (shaderc, SDL, png...)
+        if: steps.deps.outputs.cache-hit != 'true'
         working-directory: core
         run: |
-          cmake -S . -B build -G Ninja \
+          ANDROID_NDK="$NDK" ANDROID_ABI=arm64-v8a ANDROID_API=$API_LEVEL \
+            ./.github/workflows/scripts/android/build-dependencies.sh "$HOME/deps"
+      - name: Configurar
+        working-directory: core
+        run: |
+          cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$API_LEVEL -DANDROID_STL=c++_static \
+            -DCMAKE_PREFIX_PATH=$HOME/deps -DCMAKE_FIND_ROOT_PATH=$HOME/deps \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
-            ${{ github.event.inputs.cmake_flags }}
-      - name: Compilar
+            -DENABLE_LIBRETRO=ON -DENABLE_QT_UI=OFF -DENABLE_SDL_FRONTEND=OFF \
+            -DENABLE_GSRUNNER=OFF -DENABLE_TESTS=OFF -DENABLE_RECOMPILER_TEST_HOOKS=OFF \
+            -DENABLE_SETCAP=OFF -DUSE_BACKTRACE=OFF -DX11_API=OFF -DWAYLAND_API=OFF \
+            -DDISABLE_ADVANCE_SIMD=TRUE -DARMSX2_ANDROID_HOST_PAGE_SIZE=0x1000 \
+            -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
+      - name: Compilar núcleo
         working-directory: core
-        run: cmake --build build --parallel
-      - name: Localizar .so
+        run: cmake --build build --target pcsx2-libretro --parallel
+      - name: Empacotar
         run: |
-          mkdir -p out
-          find core/build -name "*libretro*.so" -exec cp -v {} out/ \;
-          ls -la out
-          test -n "$(ls out)" || { echo "Nenhum .so libretro encontrado"; exit 1; }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nucleo-ps2-arm64
-          path: out/*.so
+          SO=$(find core -name armsx2_libretro.so | head -1)
+          test -n "$SO" || { echo "armsx2_libretro.so nao encontrado"; exit 1; }
+          $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-unneeded "$SO"
+          mkdir -p pkg/app/src/main/jniLibs/arm64-v8a pkg/app/src/main/assets
+          cp -v "$SO" pkg/app/src/main/jniLibs/arm64-v8a/libarmsx2_libretro.so
+          cp -r core/bin/resources pkg/app/src/main/assets/resources
+          (cd pkg && zip -qr ../core-android-arm64.zip app)
+          ls -la core-android-arm64.zip
+      - name: Publicar na release "core"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view core >/dev/null 2>&1 || gh release create core --title "Núcleo PS2" --notes "Núcleo ARMSX2 libretro (arm64)"
+          gh release upload core core-android-arm64.zip --clobber

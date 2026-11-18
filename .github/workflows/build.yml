@@ -9,6 +9,13 @@ jobs:
         with: { distribution: temurin, java-version: 17 }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.7" }
+      - name: Baixar núcleo PS2 (se já foi compilado)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download core -p core-android-arm64.zip -D /tmp/core
+          unzip -o /tmp/core/core-android-arm64.zip -d .
       - run: gradle assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
